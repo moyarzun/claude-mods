@@ -41,6 +41,10 @@ test('lists the pull requests and opens the chosen one', async ($, on) => {
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: '/work/nobira-android' }))
   on('ui.toast', () => ({ value: undefined }))
+  on('clock.every', () => ({ value: { cancel: () => {} } }))
+  on('mcp.connect', () => ({
+    value: { isConnected: false, reason: 'unlisted', message: 'no browser in tests' },
+  }))
   on('process.run', (_, e) => {
     ran.push([...e.argv])
     if (e.argv[0] === 'git' && e.argv[1] === 'remote')
@@ -83,6 +87,49 @@ test('lists the pull requests and opens the chosen one', async ($, on) => {
         a[1] === 'https://github.com/moyarzun/nobira-android/pull/213',
     ),
   ).toBe(true)
+  await ui.unmount()
+})
+
+test('a PR opens through the integrated browser when one is connected', async ($, on) => {
+  const calls: Array<[string, string, Record<string, unknown> | undefined]> = []
+  on('command.register', () => ({ value: { command: 'prs' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.cwd', () => ({ value: '/work/nobira-android' }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('clock.every', () => ({ value: { cancel: () => {} } }))
+  on('mcp.connect', () => ({ value: { isConnected: true, server: 'plugin:browser:browser' } }))
+  on('mcp.call', (_, e) => {
+    calls.push([e.server, e.tool, e.args])
+
+    return { value: { content: [], isError: false } }
+  })
+  on('process.run', (_, e) => {
+    if (e.argv[0] === 'git' && e.argv[1] === 'remote')
+      return { value: { exitCode: 0, stdout: 'git@github.com:moyarzun/nobira-android.git\n', stderr: '' } }
+    if (e.argv[0] === 'git')
+      return { value: { exitCode: 0, stdout: 'true\n', stderr: '' } }
+    if (e.argv[0] === 'gh')
+      return { value: { exitCode: 0, stdout: GH, stderr: '' } }
+
+    return { value: { exitCode: 0, stdout: '', stderr: '' } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.command.run({ command: 'prs' })
+  await settle()
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'pr-213' })
+  await settle()
+
+  expect(calls).toEqual([
+    [
+      'plugin:browser:browser',
+      'open',
+      { url: 'https://github.com/moyarzun/nobira-android/pull/213' },
+    ],
+  ])
   await ui.unmount()
 })
 
