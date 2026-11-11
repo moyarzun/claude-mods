@@ -61,7 +61,6 @@ test('lists the pull requests and opens the chosen one', async ($, on) => {
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const row = await ui.find({ type: 'Button', text: /#213/ })
-  expect(await ui.find({ type: 'Text', text: 'moyarzun/nobira-android' })).toBeTruthy()
   expect(
     await ui.find({ type: 'Text', text: 'Worktree: nobira-android' }),
   ).toBeTruthy()
@@ -73,8 +72,9 @@ test('lists the pull requests and opens the chosen one', async ($, on) => {
     await ui.find({ type: 'Text', text: /chore\/review-harness-init/ }),
   ).toBeTruthy()
 
-  const link = await ui.find({ type: 'Link' })
-  expect(link?.props.href).toBe('https://github.com/moyarzun/nobira-android')
+  expect((await ui.find({ type: 'Markdown' }))?.props.text).toBe(
+    '## [moyarzun/nobira-android](https://github.com/moyarzun/nobira-android)',
+  )
 
   await ui.press({ key: 'pr-213' })
   await settle()
@@ -121,13 +121,20 @@ test('a PR opens through the integrated browser when one is connected', async ($
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'pr-213' })
   await settle()
+  await ui.press({ key: 'repo-link', link: { href: 'https://github.com/moyarzun/nobira-android' } })
+  await settle()
 
-  expect(calls).toEqual([
+  expect(calls.filter(c => c[0] === 'ccd_view')).toEqual([
+    ['ccd_view', 'show_pane', { pane: 'preview' }],
+    ['ccd_view', 'show_pane', { pane: 'preview' }],
+  ])
+  expect(calls.filter(c => c[0] === 'Claude_Browser')).toEqual([
     [
       'Claude_Browser',
-      'navigate',
+      'preview_start',
       { url: 'https://github.com/moyarzun/nobira-android/pull/213' },
     ],
+    ['Claude_Browser', 'preview_start', { url: 'https://github.com/moyarzun/nobira-android' }],
   ])
   expect(ran.some(a => a[0] === 'open' || a[0] === 'xdg-open')).toBe(false)
   await ui.unmount()
@@ -170,6 +177,45 @@ test('a PR falls back to the system opener when the integrated browser is absent
   expect(
     ran.some(a => (a[0] === 'open' || a[0] === 'xdg-open') && a[1] === 'https://github.com/moyarzun/nobira-android/pull/213'),
   ).toBe(true)
+  await ui.unmount()
+})
+
+test('a PR falls back to navigate when preview_start fails, without the system opener', async ($, on) => {
+  const ran: string[][] = []
+  const calls: Array<[string, string, Record<string, unknown> | undefined]> = []
+  on('command.register', () => ({ value: { command: 'prs' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.cwd', () => ({ value: '/work/nobira-android' }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('clock.every', () => ({ value: { cancel: () => {} } }))
+  on('mcp.call', (_, e) => {
+    calls.push([e.server, e.tool, e.args])
+
+    return { value: { content: [], isError: e.tool === 'preview_start' } }
+  })
+  on('process.run', (_, e) => {
+    ran.push([...e.argv])
+    if (e.argv[0] === 'git' && e.argv[1] === 'remote')
+      return { value: { exitCode: 0, stdout: 'git@github.com:moyarzun/nobira-android.git\n', stderr: '' } }
+    if (e.argv[0] === 'git')
+      return { value: { exitCode: 0, stdout: 'true\n', stderr: '' } }
+    if (e.argv[0] === 'gh')
+      return { value: { exitCode: 0, stdout: GH, stderr: '' } }
+
+    return { value: { exitCode: 0, stdout: '', stderr: '' } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.command.run({ command: 'prs' })
+  await settle()
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'pr-213' })
+  await settle()
+
+  expect(calls.map(c => c[1])).toEqual(['preview_start', 'navigate', 'show_pane'])
+  expect(ran.some(a => a[0] === 'open' || a[0] === 'xdg-open')).toBe(false)
   await ui.unmount()
 })
 
