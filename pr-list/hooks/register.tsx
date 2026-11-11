@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Hook, Register } from 'claude-code'
+import type { Hook, Register, Timer } from 'claude-code'
 
 import type { Filter, PrChecks, PrState, Provider, View } from '../types'
 import {
@@ -41,6 +41,10 @@ const filter = atom({ plugin: 'pr-list', key: 'filter' } as const, 'ALL' as Filt
   shape: 'filter-1',
 })
 const FILTERS: readonly Filter[] = ['ALL', 'OPEN', 'DRAFT', 'MERGED', 'CLOSED']
+// How often the pane refreshes itself while open, so a PR's state and checks
+// don't go stale without anyone pressing "Actualizar".
+const POLL_MS = 15000
+let poll: Timer | null = null
 
 // `$` as a hook receives it, for the helpers below.
 type Dollar = Parameters<Hook<'session.start'>>[0]
@@ -105,22 +109,27 @@ async function isLinkedRepo($: Dollar, cwd: string): Promise<boolean> {
   return parseRemote(await remoteUrl($, cwd)) !== null
 }
 
-async function load($: Dollar): Promise<void> {
-  await update<View>($, view, v => ({ ...v, status: 'loading', message: 'Cargando…' }))
+async function load($: Dollar, opts: { silent?: boolean } = {}): Promise<void> {
+  if (!opts.silent)
+    await update<View>($, view, v => ({ ...v, status: 'loading', message: 'Cargando…' }))
   let cwd = ''
   let repo = ''
   let provider: Provider = 'unknown'
   let repoUrl = ''
+  // A background poll's hiccup (a rate limit, a dropped connection) isn't
+  // worth blanking an already-loaded list over; it just tries again later.
   const fail = (message: string) =>
-    update<View>($, view, () => ({
-      status: 'error',
-      message,
-      repo,
-      worktree: baseName(cwd),
-      provider,
-      repoUrl,
-      prs: [],
-    }))
+    opts.silent
+      ? Promise.resolve()
+      : update<View>($, view, () => ({
+          status: 'error',
+          message,
+          repo,
+          worktree: baseName(cwd),
+          provider,
+          repoUrl,
+          prs: [],
+        }))
   try {
     cwd = await $.session.cwd()
     repo = baseName(cwd)
@@ -197,6 +206,15 @@ async function openUrl($: Dollar, url: string): Promise<void> {
 
     return
   }
+  const browser = await $.mcp.connect('browser')
+  if (browser.isConnected) {
+    const result = await $.mcp.call(browser.server, 'open', { url })
+    if (!result.isError) {
+      $.ui.toast(`Abierto: ${url}`)
+
+      return
+    }
+  }
   for (const bin of ['open', 'xdg-open']) {
     try {
       const run = await $.process.run([bin, url], { timeoutMs: 10000 })
@@ -212,6 +230,16 @@ async function openUrl($: Dollar, url: string): Promise<void> {
   $.ui.toast('No encontré cómo abrir el navegador.')
 }
 
+function startPolling($: Dollar): void {
+  if (poll) return
+  poll = $.clock.every(POLL_MS, () => void load($, { silent: true }))
+}
+
+function stopPolling(): void {
+  poll?.cancel()
+  poll = null
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -221,6 +249,7 @@ export const register: Register = on => {
     const cwd = await $.session.cwd()
     if (await isLinkedRepo($, cwd)) {
       await $.ui.open({ id: PANE, title: 'Pull requests' })
+      startPolling($)
       void load($)
     }
 
@@ -229,9 +258,16 @@ export const register: Register = on => {
 
   on('command.run', { command: 'prs' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Pull requests', focus: true })
+    startPolling($)
     void load($)
 
     return { text: 'Panel de pull requests abierto.' }
+  })
+
+  on('ui.close', { id: PANE }, async ($, e, next) => {
+    stopPolling()
+
+    return next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
