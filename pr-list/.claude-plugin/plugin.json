@@ -2,5 +2,6 @@
   "name": "pr-list",
   "version": "0.1.0",
   "description": "Lista los pull requests del repositorio git actual con su estado y abre el elegido en el navegador",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "license": "MIT"
 }

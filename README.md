@@ -23,3 +23,7 @@ claude plugin install pr-list --marketplace moyarzun/claude-mods
 ```
 
 En la app de escritorio: + junto al cuadro de texto, Plugins, Add marketplace con `moyarzun/claude-mods`, luego Add plugin.
+
+## Licencia
+
+[MIT](LICENSE): cualquier persona puede usar, copiar, modificar y redistribuir el mod.
