@@ -86,6 +86,57 @@ test('lists the pull requests and opens the chosen one', async ($, on) => {
   await ui.unmount()
 })
 
+test('a linked git repo opens the pane on session start, unprompted', async ($, on) => {
+  const opened: Array<{ id: string }> = []
+  on('command.register', () => ({ value: { command: 'prs' } }))
+  on('ui.open', (_, e) => {
+    opened.push(e)
+
+    return { value: { isPlaced: true } }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.cwd', () => ({ value: '/work/nobira-android' }))
+  on('process.run', (_, e) => {
+    if (e.argv[0] === 'git' && e.argv[1] === 'remote')
+      return { value: { exitCode: 0, stdout: 'git@github.com:moyarzun/nobira-android.git\n', stderr: '' } }
+    if (e.argv[0] === 'git')
+      return { value: { exitCode: 0, stdout: 'true\n', stderr: '' } }
+    if (e.argv[0] === 'gh')
+      return { value: { exitCode: 0, stdout: GH, stderr: '' } }
+
+    return { value: { exitCode: 0, stdout: '', stderr: '' } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await settle()
+
+  expect(opened).toEqual([{ id: 'pr-list', title: 'Pull requests' }])
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Button', text: /#213/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('outside a git repository the pane stays closed on session start', async ($, on) => {
+  const opened: unknown[] = []
+  on('command.register', () => ({ value: { command: 'prs' } }))
+  on('ui.open', (_, e) => {
+    opened.push(e)
+
+    return { value: { isPlaced: true } }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.cwd', () => ({ value: '/tmp' }))
+  on('process.run', () => ({
+    value: { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' },
+  }))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await settle()
+
+  expect(opened).toEqual([])
+})
+
 test('outside a git repository the pane says so', async ($, on) => {
   on('command.register', () => ({ value: { command: 'prs' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
