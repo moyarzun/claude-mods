@@ -1,0 +1,11 @@
+{
+  "name": "claude-mods",
+  "owner": { "name": "moyarzun" },
+  "plugins": [
+    {
+      "name": "pr-list",
+      "source": "./pr-list",
+      "description": "Lista los pull requests del repositorio (GitHub, GitLab, Bitbucket, Gitea) y abre el elegido en el navegador"
+    }
+  ]
+}
