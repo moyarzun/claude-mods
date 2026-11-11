@@ -93,6 +93,18 @@ function parseFor(provider: Provider, stdout: string) {
   }
 }
 
+// Git repo with a remote claude-mods can read, regardless of whether the
+// provider is one it recognizes — `load` reports that case on its own.
+async function isLinkedRepo($: Dollar, cwd: string): Promise<boolean> {
+  const git = await $.process.run(
+    ['git', 'rev-parse', '--is-inside-work-tree'],
+    { cwd, timeoutMs: 10000 },
+  )
+  if (git.exitCode !== 0) return false
+
+  return parseRemote(await remoteUrl($, cwd)) !== null
+}
+
 async function load($: Dollar): Promise<void> {
   await update<View>($, view, v => ({ ...v, status: 'loading', message: 'Cargando…' }))
   let cwd = ''
@@ -206,6 +218,11 @@ export const register: Register = on => {
       name: 'prs',
       description: 'Lista los pull requests del repositorio y abre uno en el navegador',
     })
+    const cwd = await $.session.cwd()
+    if (await isLinkedRepo($, cwd)) {
+      await $.ui.open({ id: PANE, title: 'Pull requests' })
+      void load($)
+    }
 
     return next(e)
   })
