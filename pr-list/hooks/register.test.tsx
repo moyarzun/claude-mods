@@ -41,7 +41,7 @@ test('lists the pull requests and opens the chosen one', async ($, on) => {
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: '/work/nobira-android' }))
   on('ui.toast', () => ({ value: undefined }))
-  on('clock.every', () => ({ value: { cancel: () => {} } }))
+  on('clock.after', () => ({ value: { cancel: () => {} } }))
   on('mcp.call', () => ({ value: { content: [], isError: true } }))
   on('process.run', (_, e) => {
     ran.push([...e.argv])
@@ -96,7 +96,7 @@ test('a PR opens through the integrated browser when one is connected', async ($
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: '/work/nobira-android' }))
   on('ui.toast', () => ({ value: undefined }))
-  on('clock.every', () => ({ value: { cancel: () => {} } }))
+  on('clock.after', () => ({ value: { cancel: () => {} } }))
   on('mcp.call', (_, e) => {
     calls.push([e.server, e.tool, e.args])
 
@@ -148,7 +148,7 @@ test('a PR falls back to the system opener when the integrated browser is absent
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: '/work/nobira-android' }))
   on('ui.toast', () => ({ value: undefined }))
-  on('clock.every', () => ({ value: { cancel: () => {} } }))
+  on('clock.after', () => ({ value: { cancel: () => {} } }))
   on('mcp.call', (_, e) => {
     calls.push([e.server, e.tool, e.args])
     throw new Error('server not connected')
@@ -188,7 +188,7 @@ test('a PR falls back to navigate when preview_start fails, without the system o
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: '/work/nobira-android' }))
   on('ui.toast', () => ({ value: undefined }))
-  on('clock.every', () => ({ value: { cancel: () => {} } }))
+  on('clock.after', () => ({ value: { cancel: () => {} } }))
   on('mcp.call', (_, e) => {
     calls.push([e.server, e.tool, e.args])
 
@@ -217,6 +217,49 @@ test('a PR falls back to navigate when preview_start fails, without the system o
   expect(calls.map(c => c[1])).toEqual(['preview_start', 'navigate', 'show_pane'])
   expect(ran.some(a => a[0] === 'open' || a[0] === 'xdg-open')).toBe(false)
   await ui.unmount()
+})
+
+test('the pane starts refreshing at the fast interval', async ($, on) => {
+  const PENDING = JSON.stringify([
+    {
+      number: 7,
+      title: 'wip',
+      url: 'https://github.com/moyarzun/nobira-android/pull/7',
+      headRefName: 'wip',
+      author: { login: 'moyarzun' },
+      state: 'OPEN',
+      isDraft: false,
+      reviewDecision: '',
+      statusCheckRollup: [{ __typename: 'CheckRun', status: 'IN_PROGRESS', conclusion: '' }],
+    },
+  ])
+  let stdout = PENDING
+  const delays: number[] = []
+  on('command.register', () => ({ value: { command: 'prs' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.cwd', () => ({ value: '/work/nobira-android' }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('clock.after', (_, e) => {
+    delays.push(e.ms)
+
+    return { value: { cancel: () => {} } }
+  })
+  on('process.run', (_, e) => {
+    if (e.argv[0] === 'git' && e.argv[1] === 'remote')
+      return { value: { exitCode: 0, stdout: 'git@github.com:moyarzun/nobira-android.git\n', stderr: '' } }
+    if (e.argv[0] === 'git')
+      return { value: { exitCode: 0, stdout: 'true\n', stderr: '' } }
+    if (e.argv[0] === 'gh')
+      return { value: { exitCode: 0, stdout, stderr: '' } }
+
+    return { value: { exitCode: 0, stdout: '', stderr: '' } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.command.run({ command: 'prs' })
+  await settle()
+  expect(delays[0]).toBe(5000)
 })
 
 test('a linked git repo opens the pane on session start, unprompted', async ($, on) => {

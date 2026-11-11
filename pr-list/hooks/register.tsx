@@ -42,9 +42,17 @@ const filter = atom({ plugin: 'pr-list', key: 'filter' } as const, 'ALL' as Filt
 })
 const FILTERS: readonly Filter[] = ['ALL', 'OPEN', 'DRAFT', 'MERGED', 'CLOSED']
 // How often the pane refreshes itself while open, so a PR's state and checks
-// don't go stale without anyone pressing "Actualizar".
-const POLL_MS = 15000
+// don't go stale without anyone pressing "Actualizar". Fast while an open PR
+// still has checks running (that is what changes under your eyes), slow once
+// everything has settled, to spare the provider's API.
+const POLL_FAST_MS = 5000
+const POLL_IDLE_MS = 30000
 let poll: Timer | null = null
+// Bumped on every start/stop so a refresh still in flight when the pane
+// closes (or reopens) doesn't schedule a second timer chain.
+let pollRun = 0
+// Whether the last list had an open PR with checks pending: sets the next delay.
+let hasPendingChecks = true
 
 // `$` as a hook receives it, for the helpers below.
 type Dollar = Parameters<Hook<'session.start'>>[0]
@@ -182,6 +190,9 @@ async function load($: Dollar, opts: { silent?: boolean } = {}): Promise<void> {
       return
     }
     const prs = parseFor(provider, stdout)
+    hasPendingChecks = prs.some(
+      pr => pr.checks === 'PENDING' && pr.state !== 'MERGED' && pr.state !== 'CLOSED',
+    )
     await update<View>($, view, () => ({
       status: 'ready',
       message: prs.length === 0 ? 'No hay pull requests.' : '',
@@ -263,12 +274,21 @@ async function openUrl($: Dollar, url: string): Promise<void> {
   $.ui.toast('No encontré cómo abrir el navegador.')
 }
 
+function schedulePoll($: Dollar, run: number): void {
+  poll = $.clock.after(hasPendingChecks ? POLL_FAST_MS : POLL_IDLE_MS, async () => {
+    await load($, { silent: true })
+    if (run === pollRun) schedulePoll($, run)
+  })
+}
+
 function startPolling($: Dollar): void {
   if (poll) return
-  poll = $.clock.every(POLL_MS, () => void load($, { silent: true }))
+  hasPendingChecks = true
+  schedulePoll($, ++pollRun)
 }
 
 function stopPolling(): void {
+  pollRun++
   poll?.cancel()
   poll = null
 }
