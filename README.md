@@ -4,7 +4,7 @@ Mods personales para Claude Code.
 
 ## pr-list
 
-Agrega el comando `/prs`, que abre un panel con los pull requests del repositorio git actual: tarjetas con título, estado, checks, review y rama, un filtro por estado y el nombre del repo (`owner/repo`) con el ícono de su proveedor. Hacer click en un PR o en el nombre del repo lo abre en el navegador integrado de la app de escritorio de Claude (servidor `Claude_Browser`, herramienta `navigate`) si la sesión lo tiene, o en el navegador del sistema (`open` / `xdg-open`).
+Agrega el comando `/prs`, que abre un panel con los pull requests del repositorio git actual: tarjetas con título, estado, checks, review y rama, un filtro por estado y el nombre del repo (`owner/repo`) con el ícono de su proveedor. Hacer click en un PR o en el nombre del repo lo abre en el navegador integrado de la app de escritorio de Claude (servidor `Claude_Browser`, herramienta `preview_start`: cada enlace abre una pestaña nueva) si la sesión lo tiene, o en el navegador del sistema (`open` / `xdg-open`).
 
 Si la sesión se inicia en un repositorio git con un remoto vinculado, el panel se abre solo, sin esperar a `/prs`. Mientras el panel está abierto se actualiza solo cada 15 segundos, así el estado y los checks de cada PR no quedan desactualizados.
 

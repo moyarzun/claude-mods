@@ -203,18 +203,23 @@ async function load($: Dollar, opts: { silent?: boolean } = {}): Promise<void> {
 // The desktop app's built-in browser is an MCP server the session already
 // runs; it is not listed in this plugin's manifest, so `$.mcp.connect` would
 // always answer `unlisted`. Call it directly and fall back when it is absent.
+// `preview_start` with a url opens it in a tab of its own (and reuses the tab
+// already on that url); `navigate` would overwrite the active tab.
 const BROWSER_SERVER = 'Claude_Browser'
-const BROWSER_TOOL = 'navigate'
+const BROWSER_TOOLS = ['preview_start', 'navigate']
 
 async function openInIntegratedBrowser($: Dollar, url: string): Promise<boolean> {
-  try {
-    const result = await $.mcp.call(BROWSER_SERVER, BROWSER_TOOL, { url })
-
-    return !result.isError
-  } catch {
-    // no integrated browser in this session (CLI, VS Code, ...)
-    return false
+  for (const tool of BROWSER_TOOLS) {
+    try {
+      const result = await $.mcp.call(BROWSER_SERVER, tool, { url })
+      if (!result.isError) return true
+    } catch {
+      // no integrated browser in this session (CLI, VS Code, ...)
+      return false
+    }
   }
+
+  return false
 }
 
 async function openUrl($: Dollar, url: string): Promise<void> {
@@ -285,7 +290,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e)
-    const { Box, Text, Button, Select, Link } = ui
+    const { Box, Text, Button, Select, Markdown } = ui
     const Svg = 'Svg' in ui ? ui.Svg : undefined
     const v = await read($, view)
     const pick = await read($, filter)
@@ -315,11 +320,11 @@ export const register: Register = on => {
                   </Text>
                 ))}
               {v.repoUrl ? (
-                <Link href={v.repoUrl}>
-                  <Text bold size="heading">
-                    {v.repo}
-                  </Text>
-                </Link>
+                <Markdown
+                  key="repo-link"
+                  text={`## [${v.repo}](${v.repoUrl})`}
+                  onLinkPress={link => void openUrl($, link.href)}
+                />
               ) : (
                 <Text bold size="heading">
                   {v.repo ? v.repo : 'Pull requests'}
