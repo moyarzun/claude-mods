@@ -200,20 +200,33 @@ async function load($: Dollar, opts: { silent?: boolean } = {}): Promise<void> {
   }
 }
 
+// The desktop app's built-in browser is an MCP server the session already
+// runs; it is not listed in this plugin's manifest, so `$.mcp.connect` would
+// always answer `unlisted`. Call it directly and fall back when it is absent.
+const BROWSER_SERVER = 'Claude_Browser'
+const BROWSER_TOOL = 'navigate'
+
+async function openInIntegratedBrowser($: Dollar, url: string): Promise<boolean> {
+  try {
+    const result = await $.mcp.call(BROWSER_SERVER, BROWSER_TOOL, { url })
+
+    return !result.isError
+  } catch {
+    // no integrated browser in this session (CLI, VS Code, ...)
+    return false
+  }
+}
+
 async function openUrl($: Dollar, url: string): Promise<void> {
   if (!isOpenableUrl(url)) {
     $.ui.toast('La URL del PR no es https.')
 
     return
   }
-  const browser = await $.mcp.connect('browser')
-  if (browser.isConnected) {
-    const result = await $.mcp.call(browser.server, 'open', { url })
-    if (!result.isError) {
-      $.ui.toast(`Abierto: ${url}`)
+  if (await openInIntegratedBrowser($, url)) {
+    $.ui.toast(`Abierto: ${url}`)
 
-      return
-    }
+    return
   }
   for (const bin of ['open', 'xdg-open']) {
     try {
