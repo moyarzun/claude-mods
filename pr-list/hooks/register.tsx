@@ -208,11 +208,26 @@ async function load($: Dollar, opts: { silent?: boolean } = {}): Promise<void> {
 const BROWSER_SERVER = 'Claude_Browser'
 const BROWSER_TOOLS = ['preview_start', 'navigate']
 
+// `preview_start` opens the tab but leaves a hidden Browser pane hidden. The
+// desktop app's own `ccd_view` server can bring it to the front; best effort,
+// since other hosts have no such server.
+async function revealBrowserPane($: Dollar): Promise<void> {
+  try {
+    await $.mcp.call('ccd_view', 'show_pane', { pane: 'preview' })
+  } catch {
+    // not the desktop app: nothing to reveal
+  }
+}
+
 async function openInIntegratedBrowser($: Dollar, url: string): Promise<boolean> {
   for (const tool of BROWSER_TOOLS) {
     try {
       const result = await $.mcp.call(BROWSER_SERVER, tool, { url })
-      if (!result.isError) return true
+      if (!result.isError) {
+        await revealBrowserPane($)
+
+        return true
+      }
     } catch {
       // no integrated browser in this session (CLI, VS Code, ...)
       return false

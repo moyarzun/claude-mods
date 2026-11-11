@@ -124,7 +124,11 @@ test('a PR opens through the integrated browser when one is connected', async ($
   await ui.press({ key: 'repo-link', link: { href: 'https://github.com/moyarzun/nobira-android' } })
   await settle()
 
-  expect(calls).toEqual([
+  expect(calls.filter(c => c[0] === 'ccd_view')).toEqual([
+    ['ccd_view', 'show_pane', { pane: 'preview' }],
+    ['ccd_view', 'show_pane', { pane: 'preview' }],
+  ])
+  expect(calls.filter(c => c[0] === 'Claude_Browser')).toEqual([
     [
       'Claude_Browser',
       'preview_start',
@@ -210,7 +214,7 @@ test('a PR falls back to navigate when preview_start fails, without the system o
   await ui.press({ key: 'pr-213' })
   await settle()
 
-  expect(calls.map(c => c[1])).toEqual(['preview_start', 'navigate'])
+  expect(calls.map(c => c[1])).toEqual(['preview_start', 'navigate', 'show_pane'])
   expect(ran.some(a => a[0] === 'open' || a[0] === 'xdg-open')).toBe(false)
   await ui.unmount()
 })
